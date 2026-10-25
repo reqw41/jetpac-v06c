@@ -107,32 +107,34 @@ op_an:
 		ENDR
 op_an_end:	jp	bl_next
 
-; вход блока: A = h2, HL = конец блока, DE = размер пары -> bl_jmp, bl_jmp2
+; вход блока: A = h2, HL -> таблица входов (по h2/2) -> bl_jmp, bl_jmp2
 bl_setup:
-		rrca
-		and	0x7F
-		jp	z,bl_s1
-bl_s0:		push	af
-		ld	a,l
-		sub	e
+		and	0xFE			; h2 чётное: смещение в таблице слов = h2
+		add	a,l
 		ld	l,a
-		ld	a,h
-		sbc	a,0
+		ld	a,0
+		adc	a,h
 		ld	h,a
-		pop	af
-		dec	a
-		jp	nz,bl_s0
-bl_s1:		ld	(bl_jmp+1),hl
+		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		ld	(bl_jmp+1),hl
 		ld	(bl_jmp2+1),hl
 		ret
+or_entry:	REPT	13, n
+		dw	op_or_end - n * 9
+		ENDR
+an_entry:	REPT	13, n
+		dw	op_an_end - n * 11
+		ENDR
 
 ; кадр bl_*: стирание во всех 4 плоскостях
 blit_erase:
 		ld	a,(bl_h2)
 		or	a
 		ret	z
-		ld	hl,op_an_end
-		ld	de,11
+		ld	hl,an_entry
 		call	bl_setup
 		ld	a,0x80
 		call	blit_plane
@@ -140,8 +142,12 @@ blit_erase:
 		call	blit_plane
 		ld	a,0xC0
 		call	blit_plane
+		ld	a,(k_used)		; чёрная плоскость пуста — нечего стирать
+		or	a
+		ret	z
 		ld	a,0xE0
 		jp	blit_plane
+k_used:		db	0			; 1 — в чёрной плоскости что-то есть (очищает clear_screen)
 
 ; кадр bl_*: OR в плоскостях цвета A (биты 0..2 — INK ZX)
 blit_draw:
@@ -151,8 +157,7 @@ blit_draw:
 		or	a
 		ret	z
 		push	bc
-		ld	hl,op_or_end
-		ld	de,9
+		ld	hl,or_entry
 		call	bl_setup
 		pop	bc
 		ld	b,0
@@ -179,6 +184,8 @@ bd_p2:		rrca
 		pop	af
 bd_p3:		rrca
 		ret	nc
+		ld	a,1
+		ld	(k_used),a
 		ld	a,0xE0
 		jp	blit_plane
 
@@ -320,9 +327,26 @@ actor_size0:
 update_and_erase_actor:
 		call	new_frame_obj
 		call	old_frame_actor
+erase_unless_same:				; кадр не сдвинулся — стирание отложить до цвета (colourize_sprite)
+		ld	hl,of_scr
+		ld	de,nf_scr
+		ld	b,6
+eus0:		ld	a,(de)
+		cp	(hl)
+		jp	nz,eus_diff
+		inc	hl
+		inc	de
+		dec	b
+		jp	nz,eus0
+		ld	a,1
+		ld	(nf_same),a
+		jp	actor_size0
+eus_diff:	xor	a
+		ld	(nf_same),a
 		call	load_of
 		call	blit_erase
 		jp	actor_size0
+nf_same:	db	0
 
 ; ActorUpdatePosition: DE = спрайт; старый кадр — тот же спрайт в позиции actor
 actor_update_position:
@@ -330,13 +354,13 @@ actor_update_position:
 		call	old_frame_de
 		pop	de
 		call	new_frame_de
-		call	load_of
-		call	blit_erase
-		jp	actor_size0
+		jp	erase_unless_same
 
 ; ActorEraseAnimSprite: DE = спрайт; только новый кадр (без стирания)
 actor_erase_anim_sprite:
 		call	new_frame_de
+		xor	a
+		ld	(nf_same),a
 		jp	actor_size0
 
 ; ActorDestroy: DE = спрайт в позиции actor — стереть
@@ -362,8 +386,37 @@ colourize_sprite:
 		xor	a
 		ld	(nf_pend),a
 		call	load_nf
+		call	lastcol_ptr		; HL -> прошлый цвет объекта
 		ld	a,(ws+3)
+		and	7
+		ld	b,a
+		ld	a,(nf_same)
+		or	a
+		jp	z,cz_draw
+		ld	a,(hl)			; тот же кадр: цвет сменился — стереть, иначе только дорисовать
+		cp	b
+		jp	z,cz_draw
+		push	hl
+		push	bc
+		call	blit_erase
+		pop	bc
+		pop	hl
+cz_draw:	ld	(hl),b
+		ld	a,b
 		jp	blit_draw
+; прошлый цвет текущего объекта: lastcol[(cur - 0x5D00) / 8]
+lastcol_ptr:
+		ld	a,(cur)
+		rrca
+		rrca
+		rrca
+		and	0x1F
+		ld	e,a
+		ld	d,0
+		ld	hl,lastcol
+		add	hl,de
+		ret
+lastcol:	ds	32
 
 ; --- текст и тайлы: байты пишутся целиком (ld (hl),a ZX) в плоскости по цвету --------------------------
 ; draw_cell: HL = адрес верхней строки (плоскость 0), DE -> 8 байт (сверху вниз), A = цвет; выход: HL —
@@ -371,7 +424,12 @@ colourize_sprite:
 draw_cell:
 		push	bc
 		and	7
-		push	hl
+		jp	nz,dcl_c
+		ld	b,a
+		ld	a,1
+		ld	(k_used),a
+		ld	a,b
+dcl_c:		push	hl
 		ld	c,a
 		ld	b,0
 		ld	hl,ink_planes

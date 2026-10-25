@@ -42,13 +42,23 @@ const memory = {
   write: (a, v) => { a &= 0xffff; written.add(a); mem[a] = v & 0xff; },
 };
 const cpu = new ctx.I8080(memory, { input: () => 0xff, output: () => {}, commit: () => {}, interrupt: () => {} });
+// профиль: такты по меткам i8080 (--prof)
+const PROF = process.argv.includes('--prof');
+const labAt = new Int32Array(0x10000).fill(-1), labNames = [], profT = [];
+if (PROF) {
+  const ls = Object.entries(SYM80).filter(([k, v]) => v < 0x8000 && !/^(L|\d)/.test(k)).sort((a, b) => a[1] - b[1]);
+  ls.forEach(([k], i) => { labNames.push(k); profT.push(0); });
+  let j = -1; for (let a = 0; a < 0x10000; a++) { while (j + 1 < ls.length && ls[j + 1][1] <= a) j++; labAt[a] = j; }
+}
 function call(addr, maxT) {
   const SENT = 0xfffe;
   mem[0x5afe] = SENT & 0xff; mem[0x5aff] = SENT >> 8;
   cpu.sp = 0x5afe; cpu.pc = addr;
   let t = 0; const lim = maxT || 2e8;
   while (cpu.pc !== SENT) {
+    const pc0 = cpu.pc;
     cpu.instruction(); t += cpu.vcycles;
+    if (PROF && labAt[pc0] >= 0) profT[labAt[pc0]] += cpu.vcycles;
     if (t > lim) throw new Error('i8080: не вернулась ' + addr.toString(16) + ' pc ' + cpu.pc.toString(16));
   }
   return t;
@@ -87,6 +97,7 @@ for (let i = 0; i < args.length; i++) {
   if (args[i] === '--max') maxShow = +args[++i];
   else if (args[i] === '--from') from = +args[++i];
   else if (args[i] === '--ticks') maxTicks = +args[++i];
+  else if (args[i] === '--prof') {}
   else files.push(args[i]);
 }
 
@@ -154,5 +165,10 @@ for (const file of files) {
   console.log(`${gd.name}: шагов ${gd.ticks.length}, i8080 ${run}, расхождений ${bad}; тактов на проход сред ${(tsum / Math.max(run, 1)).toFixed(0)} ` +
     `макс ${tmax} (${(tsum / Math.max(run, 1) / 59904).toFixed(2)} кадра Вектора; ZX ${(frsum / Math.max(run, 1)).toFixed(2)} кадра)`);
   if (bad) allOk = false;
+}
+if (PROF) {
+  const tot = profT.reduce((a, b) => a + b, 0);
+  profT.map((v, i) => [v, labNames[i]]).sort((a, b) => b[0] - a[0]).slice(0, 30)
+    .forEach(([v, n]) => console.log(`  ${(100 * v / tot).toFixed(1).padStart(5)} %  ${n}`));
 }
 process.exit(allOk ? 0 : 1);

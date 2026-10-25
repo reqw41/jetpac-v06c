@@ -579,13 +579,12 @@ jetman_slow:					; Z = нет (направление 0 или >= 3)
 js_no:		xor	a
 		ret
 copy8:						; HL -> DE, 8 байт
-		ld	b,8
-c8:		ld	a,(hl)
+		REPT	8
+		ld	a,(hl)
 		ld	(de),a
 		inc	hl
 		inc	de
-		dec	b
-		jp	nz,c8
+		ENDR
 		ret
 item_new_collectible:
 		call	jetman_slow
@@ -728,6 +727,7 @@ rocket_update:
 		jp	display_lives
 
 ; UpdateRocketColour: модули ракеты перерисовываются; цвета полос по 8 строк считаются заранее
+urc_last:	ds	16			; цвета полос на экране
 urc_cols:	ds	16			; цвет полос снизу вверх (модулей может быть больше 3 — запись в память)
 urc_x:		db	0
 urc_y:		db	0
@@ -798,6 +798,35 @@ urd0:		push	bc
 		call	actor_update_position		; стереть старый, кадр нового — в nf_*
 		xor	a
 		ld	(nf_pend),a
+		pop	hl
+		push	hl
+		ld	a,(nf_same)		; кадр на месте: если цвет полос сменился — стереть
+		or	a
+		jp	z,urd1
+		ld	de,urc_last-urc_cols
+		ex	de,hl
+		add	hl,de			; HL -> urc_last[полоса], DE -> urc_cols[полоса]
+		ld	a,(de)
+		cp	(hl)
+		jp	nz,urd_er
+		inc	hl
+		inc	de
+		ld	a,(de)
+		cp	(hl)
+		jp	z,urd1
+urd_er:		call	load_nf
+		call	blit_erase
+urd1:		pop	hl
+		push	hl
+		ld	de,urc_last-urc_cols	; запомнить цвета полос
+		ex	de,hl
+		add	hl,de
+		ld	a,(de)
+		ld	(hl),a
+		inc	hl
+		inc	de
+		ld	a,(de)
+		ld	(hl),a
 		pop	hl
 		push	hl
 		ld	a,(hl)			; нижняя полоса модуля

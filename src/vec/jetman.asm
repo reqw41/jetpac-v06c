@@ -388,6 +388,11 @@ li_draw:	ld	a,(ws+2)
 put_ff:
 		push	hl
 		and	7
+		jp	nz,pf_c
+		ld	a,1
+		ld	(k_used),a
+		xor	a
+pf_c:
 		ld	c,a
 		ld	b,0
 		push	hl
