@@ -20,3 +20,5 @@ open('build/jetpac_fixed.skool','w').write('\n'.join(out))
 P
 .venv/bin/skool2bin.py -w -s build/jetpac_fixed.skool build/jetpac.bin
 .venv/bin/skool2asm.py -H -crs build/jetpac_fixed.skool > build/jetpac_z80.asm 2>/dev/null
+# полная таблица меток (и проверка, что текст собирается в тот же образ)
+(cd build && ../tools/sjasmplus --nologo --raw=z80.bin --sym=z80.sym jetpac_z80.asm >/dev/null && cmp z80.bin jetpac.bin)
