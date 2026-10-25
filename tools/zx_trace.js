@@ -44,6 +44,7 @@ function run(sc, owned, learn) {
   const sndAt = new Map(SND.map(([n, a, b]) => [SYM[n], [n, SYM[a], SYM[b]]]));
   let prevPc = -1;
   const ticks = [];
+  const cov = new Uint8Array(0x10000);             // покрытие: выполненные адреса игры (не прерывание)
   let prev = m.mem.slice(LO, HI);
   const first = Buffer.from(prev).toString('base64');
   const regs = regsOf(m);
@@ -61,7 +62,7 @@ function run(sc, owned, learn) {
       const pc = m.pc;
       if (pc === END && !m.inIsr && moved) break;
       if (m.intLine && m.intReady()) { m.step(); continue; }
-      if (!m.inIsr) moved = true;
+      if (!m.inIsr) { moved = true; cov[pc] = 1; }
       if (!m.inIsr) {
         if (pc === SYM.MenuScreen) menu = true;
         const sn = sndAt.get(pc);
@@ -72,6 +73,7 @@ function run(sc, owned, learn) {
       m.step();
       if (isLdAR) cur.r.push(m.cpu.get_a());
       if (menu && m.frames - f0 > 5) break;                 // конец игры: меню — эталон кончается
+      if (keys.includes('SHIFT') && m.frames - f0 >= 20) m.keysOnly(keys.filter((k) => k !== 'SHIFT'));   // пауза: SHIFT отпускается
       if (m.frames - f0 > 3000) throw new Error('шаг не кончается, pc ' + pc.toString(16));
     }
     cur.fr = m.frames - f0;
@@ -88,7 +90,7 @@ function run(sc, owned, learn) {
     prev = now;
     if (menu) break;
   }
-  return { m, ticks, first, regs };
+  return { m, ticks, first, regs, cov };
 }
 
 if (require.main === module) {
@@ -99,9 +101,10 @@ if (require.main === module) {
   run(sc, null, learn);
   const owned = new Set([...learn].filter((a) => !(a >= 0x5ccb && a < STACK_HI)));
   const t0 = Date.now();
-  const { ticks, first, regs } = run(sc, owned, null);
+  const { ticks, first, regs, cov } = run(sc, owned, null);
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  const doc = { name: sc.name, scenario: sc, owned: [...owned].sort((a, b) => a - b), lo: LO, hi: HI, first, regs, ticks };
+  const covList = []; for (let a = 0x6000; a < 0x8000; a++) if (cov[a]) covList.push(a);
+  const doc = { name: sc.name, scenario: sc, owned: [...owned].sort((a, b) => a - b), lo: LO, hi: HI, first, regs, cov: covList, ticks };
   fs.writeFileSync(out, zlib.gzipSync(JSON.stringify(doc)));
   const fr = ticks.reduce((s, t) => s + t.fr, 0);
   const cnt = (k) => ticks.reduce((s, t) => s + t[k].length, 0);

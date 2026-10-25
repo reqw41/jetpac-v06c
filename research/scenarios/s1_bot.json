@@ -1,0 +1,2 @@
+{ "name": "s1_bot", "ticks": 15000, "policy": { "name": "bot", "seed": 3, "fire": 0.6 },
+  "pokes": [ { "tick": 0, "every": 400, "set": { "player_lives": 5 } } ] }

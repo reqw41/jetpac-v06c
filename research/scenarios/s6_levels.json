@@ -1,0 +1,4 @@
+{ "name": "s6_levels", "ticks": 17000, "policy": { "name": "bot", "seed": 17, "fire": 0.7 },
+  "pokes": [ { "tick": 0, "set": { "player_level": 2 } },
+             { "tick": 5, "every": 2400, "set": { "5d34": 3, "5d35": 6, "5d38": 0 } },
+             { "tick": 0, "every": 400, "set": { "player_lives": 5 } } ] }

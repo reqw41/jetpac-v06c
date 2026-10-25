@@ -1,0 +1,3 @@
+{ "name": "s3_two", "ticks": 8000,
+  "menu": [ { "frames": 30, "keys": [] }, { "frames": 3, "keys": ["2"] }, { "frames": 10, "keys": [] }, { "frames": 3, "keys": ["5"] } ],
+  "random": { "seed": 21, "keys": ["Z", "X", "Q", "A"], "p": 0.45, "hold": [2, 30] } }

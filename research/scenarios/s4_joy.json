@@ -1,0 +1,5 @@
+{ "name": "s4_joy", "ticks": 8000,
+  "menu": [ { "frames": 30, "keys": [] }, { "frames": 3, "keys": ["4"] }, { "frames": 10, "keys": [] }, { "frames": 3, "keys": ["5"] } ],
+  "steps": [ { "ticks": 50, "keys": [] }, { "ticks": 3, "keys": ["SHIFT"] }, { "ticks": 20, "keys": ["Q", "SHIFT"] } ],
+  "random": { "seed": 5, "keys": ["6", "7", "8", "9", "0", "1"], "p": 0.35, "hold": [2, 40] },
+  "pokes": [ { "tick": 0, "every": 500, "set": { "player_lives": 4 } } ] }

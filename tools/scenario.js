@@ -3,7 +3,7 @@
 //
 // Сценарий: { "name", "menu": [{"frames": n, "keys": [...]}], "ticks": N,
 //   "steps": [{"ticks": n, "keys": [...]}], "random": {"seed", "keys": [...], "p": 0.3, "hold": [a, b]},
-//   "policy": {"name": ...}, "pokes": [{"tick": t, "set": {"метка или hex": значение | "@метка"}}] }
+//   "policy": {"name": ...}, "pokes": [{"tick": t, "every": n?, "set": {"метка или hex": значение | "@метка"}}] }
 // По умолчанию меню: 60 кадров, «5» 3 кадра (1 игрок, клавиатура).
 'use strict';
 const path = require('path');
@@ -30,7 +30,10 @@ function start(sc, opts) {
   const policy = sc.policy ? require(path.join(__dirname, 'policies', sc.policy.name + '.js'))(sc.policy, SYM) : null;
   const N = sc.ticks || plan.length;
   const pokes = new Map();
-  for (const p of sc.pokes || []) pokes.set(p.tick, p.set);
+  for (const p of sc.pokes || []) {
+    if (p.every) { for (let t = p.tick || 0; t < N; t += p.every) pokes.set(t, Object.assign({}, pokes.get(t), p.set)); }
+    else pokes.set(p.tick, Object.assign({}, pokes.get(p.tick), p.set));
+  }
   const applied = [];
   function keysFor(t) {
     if (t >= N) return null;

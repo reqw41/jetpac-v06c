@@ -1,0 +1,4 @@
+{ "name": "s7_hiscore", "ticks": 6000,
+  "menu": [ { "frames": 30, "keys": [] }, { "frames": 3, "keys": ["2"] }, { "frames": 10, "keys": [] }, { "frames": 3, "keys": ["5"] } ],
+  "pokes": [ { "tick": 0, "set": { "5cf0": 1, "5cf1": 0, "5cf2": 0, "5cf7": 0, "5cf8": 80, "5cf9": 0 } } ],
+  "random": { "seed": 33, "keys": ["Z", "X", "Q", "A"], "p": 0.45, "hold": [2, 30] } }

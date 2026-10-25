@@ -1,0 +1,2 @@
+{ "name": "s2_bot_hi", "ticks": 14000, "policy": { "name": "bot", "seed": 11, "fire": 0.7 },
+  "pokes": [ { "tick": 0, "set": { "player_level": 4 } }, { "tick": 0, "every": 400, "set": { "player_lives": 5 } } ] }
