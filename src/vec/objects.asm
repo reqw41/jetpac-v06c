@@ -5,6 +5,19 @@
 ; --- звук: событие A = 1 (Wave1), 2 (Wav2), 3 (лазер), 4 (взрыв); C, D — параметры -------------------
 sound_ev:
 		push	hl
+		push	af
+		ld	a,(lock_mode)		; на сверке — в журнал, в игре — в ВИ53
+		or	a
+		jp	nz,se_log
+		pop	af
+		push	bc
+		push	de
+		call	snd_play
+		pop	de
+		pop	bc
+		pop	hl
+		ret
+se_log:		pop	af
 		ld	hl,(snd_ptr)
 		ld	(hl),a
 		inc	hl

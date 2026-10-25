@@ -354,6 +354,8 @@ ds0:		ld	a,(de)
 ; --- текст --------------------------------------------------------------------------------------------
 txt_col:	db	0x47
 ; draw_char: A = символ, HL = адрес; цвет txt_col; HL -> следующее знакоместо; BC, DE сохраняются
+txt_inv:	db	0			; 1 — символы инверсно (мигание FLASH)
+glyph_inv:	ds	8
 draw_char:
 		push	de
 		push	hl
@@ -365,7 +367,28 @@ draw_char:
 		ld	de,system_font-0x100
 		add	hl,de
 		ex	de,hl
-		pop	hl
+		ld	a,(txt_inv)
+		or	a
+		jp	nz,dch_inv
+		ld	a,(txt_col)		; FLASH: инверсно в нечётной фазе 16 кадров
+		and	0x80
+		jp	z,dch_n
+		ld	a,(FRAMES)
+		and	0x10
+		jp	z,dch_n
+dch_inv:	push	bc
+		ld	hl,glyph_inv
+		ld	b,8
+dch0:		ld	a,(de)
+		cpl
+		ld	(hl),a
+		inc	de
+		inc	hl
+		dec	b
+		jp	nz,dch0
+		pop	bc
+		ld	de,glyph_inv
+dch_n:		pop	hl
 		ld	a,(txt_col)
 		call	draw_cell
 		pop	de

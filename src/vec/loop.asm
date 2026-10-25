@@ -15,6 +15,9 @@ snd_buf:	ds	96
 
 ; ld a,r ZX: очередь r_buf (на Векторе её пополняет генератор)
 get_r:
+		ld	a,(lock_mode)
+		or	a
+		jp	z,get_r_vec
 		push	hl
 		ld	a,(r_idx)
 		ld	l,a

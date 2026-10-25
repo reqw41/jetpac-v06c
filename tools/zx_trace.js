@@ -56,7 +56,8 @@ function run(sc, owned, learn) {
     m.keysOnly(keys);
     cur = { rd: [], in: [], r: [], snd: [], keys };
     if (applied.length) cur.pk = applied.slice();
-    const f0 = m.frames;
+    const f0 = m.frames, t0 = m.total;
+    let ts = 0;                                    // такты в звуковых подпрограммах
     let menu = false, moved = false;              // moved: выполнена хоть одна команда игры (не прерывание)
     for (;;) {
       const pc = m.pc;
@@ -70,13 +71,16 @@ function run(sc, owned, learn) {
         prevPc = pc;
       }
       const isLdAR = !m.inIsr && m.peek(pc) === 0xed && m.peek(pc + 1) === 0x5f;
-      m.step();
+      const inSnd = !m.inIsr && pc >= SYM.PlaySquareWave1 && pc < SYM.SfxSetExplodeParams || pc >= SYM.SfxPlayExplosion && pc < SYM.SfxFinishReturn;
+      const c = m.step();
+      if (inSnd) ts += c;
       if (isLdAR) cur.r.push(m.cpu.get_a());
       if (menu && m.frames - f0 > 5) break;                 // конец игры: меню — эталон кончается
       if (keys.includes('SHIFT') && m.frames - f0 >= 20) m.keysOnly(keys.filter((k) => k !== 'SHIFT'));   // пауза: SHIFT отпускается
       if (m.frames - f0 > 3000) throw new Error('шаг не кончается, pc ' + pc.toString(16));
     }
     cur.fr = m.frames - f0;
+    cur.t = m.total - t0; cur.ts = ts;
     if (menu) { cur.menu = 1; }
     const now = m.mem.slice(LO, HI);
     const d = [];
