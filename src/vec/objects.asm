@@ -4,6 +4,7 @@
 
 ; --- звук: событие A = 1 (Wave1), 2 (Wav2), 3 (лазер), 4 (взрыв); C, D — параметры -------------------
 sound_ev:
+		call	snd_block
 		push	hl
 		push	af
 		ld	a,(lock_mode)		; на сверке — в журнал, в игре — в ВИ53
@@ -28,6 +29,43 @@ se_log:		pop	af
 		ld	(snd_ptr),hl
 		pop	hl
 		ret
+; snd_block: пауза на время звука ZX (бипер блокировал игру); A = вид, C, D; регистры сохраняет.
+; 1, 2: C периодов по 2 * (13 * D) тактов ZX -> ~C * D витков по 20 тактов Вектора;
+; 3 (лазер): ~42000 тактов ZX; 4 (взрыв): сумма по c = C..1 (26c + 50) -> c витков + 2 на шаг.
+snd_block:
+		push	af
+		push	bc
+		push	de
+		cp	3
+		jp	z,sbl_laser
+		cp	4
+		jp	z,sbl_expl
+sbl_w0:		ld	a,d			; C раз по D витков
+sbl_w1:		dec	a
+		jp	nz,sbl_w1
+		dec	c
+		jp	nz,sbl_w0
+		jp	sbl_end
+sbl_laser:	ld	de,1800
+sbl_l0:		dec	de
+		ld	a,d
+		or	e
+		jp	nz,sbl_l0
+		jp	sbl_end
+sbl_expl:	ld	a,c
+		or	a
+		jp	z,sbl_end
+sbl_e0:		ld	a,c
+		add	a,2
+sbl_e1:		dec	a
+		jp	nz,sbl_e1
+		dec	c
+		jp	nz,sbl_e0
+sbl_end:	pop	de
+		pop	bc
+		pop	af
+		ret
+
 sfx_thrusters:
 		ld	a,(ws+2)
 		rrca
@@ -976,7 +1014,15 @@ ae1:		ld	a,(ws+6)
 		ret	nc
 		call	ws_flush
 		jp	player_turn_ends
+; FrameRateLimiter: пустой слот, кадр не сменился — пауза как на ZX (192 витка ~ 5000 тактов ZX
+; = 4290 тактов Вектора). Этим оригинал и держит темп.
 frame_rate_limiter:
+		ld	a,(frame_ticked)
+		or	a
+		ret	nz
+		ld	b,120			; подобрано: средний проход как у ZX (lock80, «темп»)
+frl0:		dec	b
+		jp	nz,frl0
 		ret
 
 ; --- пришельцы ------------------------------------------------------------------------------------------

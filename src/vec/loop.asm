@@ -45,10 +45,10 @@ call_hl:	jp	(hl)
 
 ; диспетчер: объект cur -> ws, подпрограмма по типу, ws -> объект
 dispatch_obj:
-		ld	hl,(cur)		; пустой слот (FrameRateLimiter) — без копирования
+		ld	hl,(cur)		; пустой слот — FrameRateLimiter без копирования
 		ld	a,(hl)
 		or	a
-		ret	z
+		jp	z,frame_rate_limiter
 		xor	a
 		ld	(ws_skip),a
 		call	ws_load

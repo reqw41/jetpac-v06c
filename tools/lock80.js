@@ -114,6 +114,7 @@ for (const file of files) {
   for (let k = 0; k < 8; k++) convBuffer(real, 0x5e00 + k * 0x33);
   mem[SYM80.lock_mode] = 1;
   let bad = 0, run = 0, shown = 0, tsum = 0, tmax = 0, frsum = 0;
+  const pairs = [];
   for (let t = 0; t < gd.ticks.length && run < maxTicks; t++) {
     const tk = gd.ticks[t];
     for (const [a, v] of tk.pk || []) { real[a] = v; if (a >= 0x4000 && a < 0x5800) putScreen(a, v); else if (a >= 0x5cf0 && a < 0x5e00) mem[a] = v; }
@@ -132,6 +133,7 @@ for (const file of files) {
     let err = null, tt = 0;
     try { tt = call(SYM80.pass); } catch (e) { err = e; }
     run++; tsum += tt; if (tt > tmax) tmax = tt; frsum += tk.fr;
+    if (tk.t !== undefined) pairs.push([tt / 59904, (tk.t - tk.ts) / 69888, tk.ts / 69888]);
     const diffs = [];
     if (err) diffs.push(['исключение', '', err.message]);
     // переменные
@@ -164,6 +166,12 @@ for (const file of files) {
   }
   console.log(`${gd.name}: шагов ${gd.ticks.length}, i8080 ${run}, расхождений ${bad}; тактов на проход сред ${(tsum / Math.max(run, 1)).toFixed(0)} ` +
     `макс ${tmax} (${(tsum / Math.max(run, 1) / 59904).toFixed(2)} кадра Вектора; ZX ${(frsum / Math.max(run, 1)).toFixed(2)} кадра)`);
+  if (pairs.length) {                       // темп: кадры ZX без звука ~ k * кадры i8080
+    let sx = 0, sy = 0, sxx = 0, sxy = 0, ss = 0; for (const [x, y, z] of pairs) { sx += x; sy += y; sxx += x * x; sxy += x * y; ss += z; }
+    const n = pairs.length, k = (n * sxy - sx * sy) / (n * sxx - sx * sx), b = (sy - k * sx) / n;
+    let e = 0; for (const [x, y] of pairs) e += Math.abs(y - (k * x + b));
+    console.log(`  темп: ZX без звука = ${k.toFixed(3)} * i8080 + ${b.toFixed(3)} кадра (ср. ошибка ${(e / n).toFixed(3)}), ZX звук ${(ss / n).toFixed(3)} кадра на проход, отношение средних ${(sy / sx).toFixed(3)}`);
+  }
   if (bad) allOk = false;
 }
 if (PROF) {
