@@ -526,6 +526,7 @@ snd_play:
 		ld	a,h
 		adc	a,0
 		ld	h,a
+		add	hl,hl			; октавой ниже: на ZX код в спорной памяти шёл медленнее, звук ниже
 		ld	(sp_n),hl
 		; кадров = C * (26*D + 40) / 70000 ~ (C * ((26*D + 40) >> 6)) >> 10
 		ld	l,e			; E = D (сохранён выше)
@@ -570,30 +571,36 @@ sp_f2:		ld	(snd_left),a
 		jp	snd_out
 sp_n:		dw	0
 sp_d:		db	0
-sp_laser:	ld	hl,422			; второй шаг: c ~ 36
+sp_laser:	ld	hl,1200			; второй шаг ~1,25 кГц
 		ld	(snd_nxt),hl
-		ld	a,1
+		ld	a,2
 		ld	(snd_nxf),a
-		ld	(snd_left),a
-		ld	hl,177			; c ~ 14
-		jp	snd_out
-sp_expl:	ld	l,c			; N ~ 5,5*C + 17
-		ld	h,0
-		ld	d,h
-		ld	e,l
-		add	hl,hl
-		add	hl,hl
-		add	hl,de
-		ld	a,e
-		rrca
-		and	0x7F
-		add	a,17
-		add	a,l
-		ld	l,a
-		ld	a,h
-		adc	a,0
-		ld	h,a
 		ld	a,1
+		ld	(snd_left),a
+		ld	hl,600			; ~2,5 кГц
+		jp	snd_out
+sp_expl:	ld	a,(FRAMES)		; треск: N ~ 48*C + 300 с прыжком тона от кадра
+		and	0x1F
+		ld	l,a
+		ld	h,0
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		ld	de,300
+		add	hl,de
+		ex	de,hl
+		ld	l,c
+		ld	h,0
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl			; 16C
+		ld	b,h
+		ld	c,l
+		add	hl,hl			; 32C
+		add	hl,bc			; 48C
+		add	hl,de
+		ld	a,2
 		ld	(snd_left),a
 snd_out:	ld	a,0xB6			; канал 2, младший/старший, режим 3, двоичный
 		out	(0x08),a
