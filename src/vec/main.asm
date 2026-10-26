@@ -460,8 +460,14 @@ vec_zxmap:	db	low vec_kbmat+7,0x00, low vec_kbmat+7,0x04, low vec_kbmat+7,0x01, 
 		db	low vec_kbmat+0,0x00, low vec_kbmat+5,0x10, low vec_kbmat+5,0x08, low vec_kbmat+5,0x04, low vec_kbmat+5,0x01	; ENTER(нет: ВК — пауза) L K J H
 		db	low vec_kbmat+7,0x80, low vec_kbmat+7,0x10, low vec_kbmat+5,0x20, low vec_kbmat+5,0x40, low vec_kbmat+4,0x04	; SPACE SYM(\) M N B
 
-; --- звук: ВИ53 канал 2 (порт 09h, управление 08h), меандр; эффекты ZX пересчитаны в делитель и кадры --
-snd_left:	db	0			; кадров звучать
+; --- звук: ВИ53 канал 2 (порт 09h, управление 08h), меандр, асинхронно (из прерывания) ----------------
+; На ZX эффекты — петли бипера, игра ждала их; здесь звук идёт сам, игра не ждёт. Делитель и длительность —
+; по таймингам петель ZX (3,5 МГц): период меандра PlaySquareWav2 ~ 26*D + 40 тактов -> делитель ВИ53
+; (1,5 МГц) N = 0,43 * период = 11*D + D/8 + 17; длительность C периодов. Лазер — «пиу» в два шага
+; (на ZX полупериод растёт c = 8..55), взрыв — короткий щелчок высотой по C.
+snd_left:	db	0			; кадров звучать текущему шагу
+snd_nxt:	dw	0			; делитель второго шага (0 — нет)
+snd_nxf:	db	0			; его кадры
 snd_stop:
 		xor	a
 		ld	(snd_left),a
@@ -478,85 +484,116 @@ snd_tick:
 		dec	a
 		ld	(snd_left),a
 		ret	nz
-		jp	snd_stop
-; A = вид (1, 2 — меандр D/C; 3 — лазер; 4 — взрыв C), C, D
+		ld	hl,(snd_nxt)
+		ld	a,h
+		or	l
+		jp	z,snd_stop
+		ld	a,(snd_nxf)
+		ld	(snd_left),a
+		ld	de,0
+		ex	de,hl
+		ld	(snd_nxt),hl
+		ex	de,hl
+		jp	snd_out
+; A = вид (1, 2 — меандр D, C периодов; 3 — лазер; 4 — взрыв C)
 snd_play:
+		ld	hl,0
+		ld	(snd_nxt),hl
 		cp	3
 		jp	z,sp_laser
 		cp	4
 		jp	z,sp_expl
-		; полупериод ZX ~ 13*D + 26 тактов; делитель ВИ53 (1,5 МГц) ~ 0,43*(26*D + 52) = 11*D + D/8 + 22
+		; N = 11*D + D/8 + 17
+		ld	a,d
+		ld	(sp_d),a
 		ld	l,d
 		ld	h,0
-		push	hl
+		ld	e,l
+		ld	d,h
 		add	hl,hl
 		add	hl,hl
-		push	hl
-		add	hl,hl			; 8D
-		pop	de
-		add	hl,de			; 12D
-		pop	de
-		ld	a,l
-		sub	e
+		add	hl,de			; 5D
+		add	hl,hl			; 10D
+		add	hl,de			; 11D
+		ld	a,e
+		rrca
+		rrca
+		rrca
+		and	0x1F
+		add	a,17
+		add	a,l
 		ld	l,a
 		ld	a,h
-		sbc	a,d
-		ld	h,a			; 11D
-		ld	de,22
-		add	hl,de
-		; длительность: кадров = C * N / 30000 ~ (N/16) * (C/16 + 1) / 128
-		push	hl
-		ld	a,l
-		rrca
-		rrca
-		rrca
-		rrca
-		and	0x0F
-		ld	e,a
-		ld	a,h
-		add	a,a
-		add	a,a
-		add	a,a
-		add	a,a
-		or	e
-		ld	e,a
-		ld	d,0
-		ld	a,c
-		rrca
-		rrca
-		rrca
-		rrca
-		and	0x0F
-		inc	a
-		ld	b,a
-		ld	hl,0
-sp_m:		add	hl,de
-		dec	b
-		jp	nz,sp_m
+		adc	a,0
+		ld	h,a
+		ld	(sp_n),hl
+		; кадров = C * (26*D + 40) / 70000 ~ (C * ((26*D + 40) >> 6)) >> 10
+		ld	l,e			; E = D (сохранён выше)
+		ld	h,0
+		add	hl,hl			; 2D
+		ld	d,h
+		ld	e,l
 		add	hl,hl
-		ld	a,h
+		add	hl,hl			; 8D
+		push	hl
+		add	hl,hl			; 16D
+		pop	de			; (8D)
+		add	hl,de			; 24D
+		ld	e,c			; C — периодов
+		ld	a,(sp_d)
+		add	a,a
+		ld	c,a
+		ld	b,0
+		add	hl,bc			; 26D (младшая часть 2D; D < 128 у всех эффектов)
+		ld	c,e
+		ld	de,40
+		add	hl,de
+		add	hl,hl
+		add	hl,hl			; H = (26D + 40) >> 6
+		ld	e,h
+		ld	d,0
+		ld	hl,0
+		ld	a,c
+		or	a
+		jp	z,sp_f1
+sp_m:		add	hl,de
+		dec	c
+		jp	nz,sp_m
+sp_f1:		ld	a,h
+		rrca
+		rrca
+		and	0x3F
+		jp	nz,sp_f2
 		inc	a
-		ld	(snd_left),a
-		pop	hl
+sp_f2:		ld	(snd_left),a
+		ld	hl,(sp_n)
 		jp	snd_out
-sp_c:		db	0
-sp_laser:	ld	hl,374
-		ld	a,2
+sp_n:		dw	0
+sp_d:		db	0
+sp_laser:	ld	hl,422			; второй шаг: c ~ 36
+		ld	(snd_nxt),hl
+		ld	a,1
+		ld	(snd_nxf),a
 		ld	(snd_left),a
+		ld	hl,177			; c ~ 14
 		jp	snd_out
-sp_expl:	ld	l,c			; низкий шум: делитель ~ 11*C + 22
+sp_expl:	ld	l,c			; N ~ 5,5*C + 17
 		ld	h,0
 		ld	d,h
 		ld	e,l
 		add	hl,hl
 		add	hl,hl
-		add	hl,hl
 		add	hl,de
-		add	hl,de
-		add	hl,de
-		ld	de,22
-		add	hl,de
-		ld	a,2
+		ld	a,e
+		rrca
+		and	0x7F
+		add	a,17
+		add	a,l
+		ld	l,a
+		ld	a,h
+		adc	a,0
+		ld	h,a
+		ld	a,1
 		ld	(snd_left),a
 snd_out:	ld	a,0xB6			; канал 2, младший/старший, режим 3, двоичный
 		out	(0x08),a
