@@ -8,8 +8,26 @@ VADDR		MACRO	yy, xx
 
 ; --- ввод: матрица ZX zx_kb[8] (бит = 0 — нажата) ------------------------------------------------------
 ; in_row: A = старший байт порта (нули выбирают ряды) -> A = 0xE0 | биты (как in a,($fe))
-in_row:
+in_row:						; один ряд (так спрашивает игра) — по таблице; иначе — общий путь
 		push	hl
+		cpl
+		ld	l,a
+		ld	h,row_of >> 8
+		ld	a,(hl)			; номер ряда или 0xFF
+		cp	8
+		jp	nc,in_multi
+		ld	l,a
+		ld	h,0
+		push	de
+		ld	de,zx_kb
+		add	hl,de
+		pop	de
+		ld	a,(hl)
+		or	0xE0
+		pop	hl
+		ret
+in_multi:	ld	a,l
+		cpl
 		push	bc
 		ld	c,a
 		ld	b,0x1F

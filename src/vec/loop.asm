@@ -140,11 +140,15 @@ pass:
 ; MainLoop: HL = первый объект; ml_lim, ml_nested — у вызывающего
 main_loop:
 ml0:		ld	(cur),hl
-		ld	a,(last_frame)		; во вложенном проходе кадр не сменится: прерывание его не считает
+		call	frames_sync		; досчитать кадр, потерянный при DI
+		ld	a,(last_frame)		; во вложенном проходе смена кадра не в счёт (на ZX там DI)
 		ld	b,a
 		ld	a,(FRAMES)
 		cp	b
-		call	nz,frame_update
+		jp	z,ml1
+		ld	a,(ml_nested)
+		or	a
+		call	z,frame_update
 ml1:		call	dispatch_obj
 		ld	hl,random_number	; NewActor
 		inc	(hl)

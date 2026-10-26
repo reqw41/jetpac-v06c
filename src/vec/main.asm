@@ -268,10 +268,12 @@ isp0:		ld	a,e
 		jp	p,isp0
 		xor	a
 		out	(0x02),a
-		ld	a,(frame_ticked)	; во вложенном проходе кадр не считается (ZX: DI)
+		ld	a,(mus_on)		; секундомер (канал 0) занят мелодией — не трогать
 		or	a
-		jp	nz,isp1
-		ld	hl,(FRAMES)
+		jp	nz,isp_fr
+		call	timer_now
+		ld	(fs_t),hl		; на этом кадре — для догона потерянных прерываний
+isp_fr:		ld	hl,(FRAMES)		; кадры считаются всегда (вложенный проход смену просто не замечает)
 		inc	hl
 		ld	(FRAMES),hl
 		ld	a,h
@@ -304,6 +306,51 @@ isp2:		call	zx_build
 ; палитра: индекс = p80<<3 | pA0<<2 | pC0<<1 | pE0 (чёрная плоскость не видна); сочетания плоскостей —
 ; ink_planes (render.asm); цвета — «холодная» (вариант 4, 26.10) + Джетмен и салатный из заставки; %BBGGGRRR
 pal_ptr:	dw	pal_vec
+; догон потерянного кадра: прерывание при DI на Векторе теряется (блиттер держит DI на плоскость).
+; Если с последнего прерывания по секундомеру прошло больше 1,5 кадра (44928 тиков 1,5 МГц) — кадр
+; потерян: FRAMES += 1, отметка -= кадр (29952). Зовёт главный цикл перед проверкой кадра.
+fs_t:		dw	0
+frames_sync:
+		ld	a,(lock_mode)
+		or	a
+		ret	nz
+		ld	a,(mus_on)
+		or	a
+		ret	nz
+		push	bc
+		push	de
+		push	hl
+		di
+		call	timer_now
+		ex	de,hl
+		ld	hl,(fs_t)
+		ld	a,l			; прошло = отметка - сейчас (счётчик идёт вниз)
+		sub	e
+		ld	c,a
+		ld	a,h
+		sbc	a,d
+		ld	b,a
+		ld	a,c
+		sub	0xC0			; >= 44928 (0xAF80)?
+		ld	a,b
+		sbc	a,0xAF
+		jp	c,fsy_ok
+		ld	de,29952
+		ld	a,l
+		sub	e
+		ld	l,a
+		ld	a,h
+		sbc	a,d
+		ld	h,a
+		ld	(fs_t),hl
+		ld	hl,(FRAMES)
+		inc	hl
+		ld	(FRAMES),hl
+fsy_ok:		ei
+		pop	hl
+		pop	de
+		pop	bc
+		ret
 ; NZ — нажата любая клавиша Вектора или огонь джойстика
 any_key:
 		ld	hl,vec_kbmat
@@ -592,8 +639,10 @@ spo_sh:		ld	a,h
 		ld	e,(hl)
 		inc	hl
 		ld	d,(hl)
-		ex	de,hl
-		call	snd_out
+		ld	a,e			; следующий шаг — только делитель (без разрыва фазы)
+		out	(0x09),a
+		ld	a,d
+		out	(0x09),a
 		jp	spo_ret
 spo_end:	call	snd_stop
 spo_ret:	pop	hl
@@ -902,14 +951,15 @@ mt_r:		ld	(mus_rot),a
 		ld	(hl),e
 		inc	hl
 		ld	(hl),d
-mt_ch:		; каналы: звучащие — делитель (с вибрато), погасшие — тишина
+		call	mus_set			; новая нота: режим 3 и делитель
+mt_ch:		; каналы: делитель (с вибрато) пишется без управляющего слова — без разрыва фазы
 		ld	c,0
 mt_c0:		ld	b,0
 		ld	hl,mus_left
 		add	hl,bc
 		ld	a,(hl)
 		or	a
-		jp	z,mt_off
+		jp	z,mt_nx			; давно молчит
 		dec	(hl)
 		jp	z,mt_off
 		ld	hl,mus_div
@@ -942,10 +992,10 @@ mt_sh:		ld	b,a
 		ld	a,d
 		sbc	a,h
 		ld	d,a
-mt_out:		call	mus_set
+mt_out:		call	mus_cnt
 		jp	mt_nx
-mt_off:		ld	de,0
-		call	mus_set
+mt_off:		ld	de,8			; конец ноты: неслышимо высокий тон (без щелчка режима 0)
+		call	mus_cnt
 mt_nx:		inc	c
 		ld	a,c
 		cp	3
@@ -964,7 +1014,21 @@ mt_nx:		inc	c
 		ret	nz
 		xor	a
 		ld	(mus_on),a
+		ld	c,0			; тишина: режим 0 всем каналам (один раз)
+mt_q:		ld	de,0
+		call	mus_set
+		inc	c
+		ld	a,c
+		cp	3
+		jp	c,mt_q
 		ret
+; канал C: только делитель (канал уже в режиме 3)
+mus_cnt:
+		ld	b,0
+		ld	hl,mus_port
+		add	hl,bc
+		ld	a,(hl)
+		jp	ms_port
 ; канал C: DE = делитель (0 — тишина: режим 0 с нулём на выходе)
 mus_set:
 		ld	b,0
@@ -979,7 +1043,7 @@ ms_on:		out	(0x08),a
 		ld	hl,mus_port
 		add	hl,bc
 		ld	a,(hl)
-		cp	0x0B
+ms_port:	cp	0x0B
 		jp	z,ms_p0
 		cp	0x0A
 		jp	z,ms_p1

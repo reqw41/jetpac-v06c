@@ -811,14 +811,22 @@ urd0:		push	bc
 		or	c
 		add	a,a
 		call	item_get_sprite
-		call	actor_update_position		; стереть старый, кадр нового — в nf_*
+		call	actor_update_position_ne	; кадры старый/новый, без стирания
 		xor	a
 		ld	(nf_pend),a
 		pop	hl
 		push	hl
-		ld	a,(nf_same)		; кадр на месте: если цвет полос сменился — стереть
+		ld	a,(nf_same)
 		or	a
-		jp	z,urd1
+		jp	nz,urd_same
+		push	hl			; сдвиг на строку (взлёт/посадка) — одним проходом, без мигания
+		call	rk_move
+		pop	hl
+		jp	z,urd_mv
+		call	load_of			; иначе — стереть старый и нарисовать полосы
+		call	blit_erase
+		jp	urd1
+urd_same:					; кадр на месте: если цвет полос сменился — стереть
 		ld	de,urc_last-urc_cols
 		ex	de,hl
 		add	hl,de			; HL -> urc_last[полоса], DE -> urc_cols[полоса]
@@ -832,17 +840,7 @@ urd0:		push	bc
 		jp	z,urd1
 urd_er:		call	load_nf
 		call	blit_erase
-urd1:		pop	hl
-		push	hl
-		ld	de,urc_last-urc_cols	; запомнить цвета полос
-		ex	de,hl
-		add	hl,de
-		ld	a,(de)
-		ld	(hl),a
-		inc	hl
-		inc	de
-		ld	a,(de)
-		ld	(hl),a
+urd1:		call	urc_keep
 		pop	hl
 		push	hl
 		ld	a,(hl)			; нижняя полоса модуля
@@ -854,7 +852,7 @@ urd1:		pop	hl
 		ld	a,(hl)			; верхняя полоса
 		ld	c,8
 		call	urc_half
-		pop	hl
+urd_nx:		pop	hl
 		inc	hl
 		ld	a,(ws+2)
 		sub	0x10
@@ -885,6 +883,26 @@ urd1:		pop	hl
 		ld	(actor_coords+1),a
 		ret
 urc_nb:		db	0
+urd_mv:		call	urc_keep		; сдвинут одним проходом — полосы уже нарисованы
+		pop	hl
+		inc	hl
+		push	hl
+		jp	urd_nx
+urc_keep:					; запомнить цвета полос модуля (HL в стеке -> urc_cols[полоса])
+		pop	de			; адрес возврата
+		pop	hl
+		push	hl
+		push	de
+		ld	de,urc_last-urc_cols
+		ex	de,hl
+		add	hl,de
+		ld	a,(de)
+		ld	(hl),a
+		inc	hl
+		inc	de
+		ld	a,(de)
+		ld	(hl),a
+		ret
 ; полоса модуля: A = цвет, C = первая строка (0 / 8); 8 строк по каждому столбцу кадра nf_*
 urc_half:
 		and	7

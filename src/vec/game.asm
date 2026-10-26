@@ -30,6 +30,15 @@ code_end:
 
 		ORG	0x6000
 		INCLUDE	"gen/data.asm"
+		ALIGN	256
+row_of:						; ~маска порта -> номер ряда (ровно один бит) или 0xFF
+		LUA ALLPASS
+		for i = 0, 255 do
+			local r = 255
+			for b = 0, 7 do if i == (1 << b) then r = b end end
+			sj.add_byte(r)
+		end
+		ENDLUA
 data_end:
 		ASSERT	data_end <= 0x8000
 

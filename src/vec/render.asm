@@ -407,6 +407,220 @@ actor_update_position:
 		call	new_frame_de
 		jp	erase_unless_same
 
+; то же без стирания: только кадры и признак nf_same (ракета решает сама)
+actor_update_position_ne:
+		push	de
+		call	old_frame_de
+		pop	de
+		call	new_frame_de
+		ld	hl,of_scr
+		ld	de,nf_scr
+		ld	b,6
+aune0:		ld	a,(de)
+		cp	(hl)
+		jp	nz,aune1
+		inc	hl
+		inc	de
+		dec	b
+		jp	nz,aune0
+		ld	a,1
+		ld	(nf_same),a
+		jp	actor_size0
+aune1:		xor	a
+		ld	(nf_same),a
+		jp	actor_size0
+
+; сдвиг кадра на 1 строку одним проходом (ракета взлетает/садится): of_* -> nf_* (те же данные, столбец,
+; ширина, высота). Байт пишется сразу итоговым: (s AND NOT старое) OR (новое AND маска цвета полосы) —
+; без промежуточного «пустого» состояния, луч не видит мигания. HL -> 2 цвета полос нового кадра
+; (строки 0..7, 8..15). Выход: Z — сделано, NZ — не тот случай.
+mv_ma:		db	0
+mv_mb:		db	0
+mv_ca:		db	0
+mv_cb:		db	0
+mv_up:		db	0
+mv_h2:		db	0
+mv_r:		db	0
+mv_x:		db	0
+mv_prev:	db	0
+mv_l0:		db	0
+mv_pl:		db	0
+mv_col:		db	0
+rk_move:
+		ld	a,(hl)
+		ld	(mv_ca),a
+		inc	hl
+		ld	a,(hl)
+		ld	(mv_cb),a
+		ld	hl,(of_dat)		; те же данные, ширина, высота, столбец
+		ex	de,hl
+		ld	hl,(nf_dat)
+		ld	a,l
+		cp	e
+		ret	nz
+		ld	a,h
+		cp	d
+		ret	nz
+		ld	hl,(of_w)
+		ex	de,hl
+		ld	hl,(nf_w)
+		ld	a,l
+		cp	e
+		ret	nz
+		ld	a,h
+		cp	d
+		ret	nz
+		ld	(mv_h2),a
+		ld	a,(of_scr+1)
+		ld	b,a
+		ld	a,(nf_scr+1)
+		cp	b
+		ret	nz
+		ld	a,(of_scr)
+		ld	b,a
+		ld	a,(nf_scr)
+		sub	b			; новый - старый: +1 — вверх, -1 — вниз
+		cp	1
+		jp	z,rkm_up
+		cp	0xFF
+		ret	nz
+		xor	a
+		ld	(mv_up),a
+		ld	a,(nf_scr)
+		jp	rkm_go
+rkm_up:		ld	a,1
+		ld	(mv_up),a
+		ld	a,(of_scr)
+rkm_go:		ld	(mv_l0),a
+		ld	a,0x80
+rkm_pl:		ld	(mv_pl),a
+		; маски полос для плоскости
+		ld	a,(mv_ca)
+		call	rkm_mask
+		ld	(mv_ma),a
+		ld	a,(mv_cb)
+		call	rkm_mask
+		ld	(mv_mb),a
+		xor	a
+		ld	(mv_col),a
+rkm_c:		ld	a,(nf_scr+1)		; столбец в плоскости
+		and	0x1F
+		ld	b,a
+		ld	a,(mv_col)
+		add	a,b
+		and	0x1F
+		ld	b,a
+		ld	a,(mv_pl)
+		or	b
+		ld	h,a
+		ld	a,(mv_l0)
+		ld	l,a
+		push	hl
+		ld	a,(mv_col)		; данные столбца: dat + col * h2
+		ld	b,a
+		ld	a,(mv_h2)
+		ld	c,a
+		ld	hl,(nf_dat)
+		ld	a,b
+		or	a
+		jp	z,rkm_d1
+rkm_d0:		ld	e,c
+		ld	d,0
+		add	hl,de
+		dec	b
+		jp	nz,rkm_d0
+rkm_d1:		ex	de,hl
+		pop	hl
+		call	mv_column
+		ld	a,(mv_col)
+		inc	a
+		ld	(mv_col),a
+		ld	b,a
+		ld	a,(nf_w)
+		cp	b
+		jp	nz,rkm_c
+		ld	a,(mv_pl)
+		add	a,0x20
+		cp	0xE0
+		jp	nz,rkm_pl
+		xor	a			; Z
+		ret
+rkm_mask:					; A = цвет -> 0xFF, если плоскость mv_pl входит в его цвет
+		and	7
+		ld	c,a
+		ld	b,0
+		ld	hl,ink_planes
+		add	hl,bc
+		ld	b,(hl)
+		ld	a,(mv_pl)
+		cp	0x80
+		ld	c,1
+		jp	z,rkm_m1
+		cp	0xA0
+		ld	c,2
+		jp	z,rkm_m1
+		ld	c,4
+rkm_m1:		ld	a,b
+		and	c
+		ret	z
+		ld	a,0xFF
+		ret
+; столбец: HL = экран (строка L0), DE = данные; строк h2 + 1
+mv_column:
+		xor	a
+		ld	(mv_prev),a
+		ld	(mv_r),a
+mc0:		ld	a,(mv_r)
+		ld	b,a
+		ld	a,(mv_h2)
+		cp	b
+		ld	a,0
+		jp	z,mc_x0
+		ld	a,(de)
+		inc	de
+mc_x0:		ld	(mv_x),a		; X = d[r] (за концом 0)
+		ld	a,(mv_up)
+		or	a
+		ld	a,b			; полоса нового кадра: вверх — по r-1, вниз — по r
+		jp	z,mc_dn
+		dec	a
+mc_dn:		cp	8
+		ld	a,(mv_ma)
+		jp	c,mc_m
+		ld	a,(mv_mb)
+mc_m:		ld	c,a
+		ld	a,(mv_up)
+		or	a
+		jp	z,mc_d2
+		ld	a,(mv_x)		; вверх: старое = X, новое = прошлый
+		cpl
+		and	(hl)
+		ld	b,a
+		ld	a,(mv_prev)
+		and	c
+		or	b
+		ld	(hl),a
+		jp	mc_n
+mc_d2:		ld	a,(mv_prev)		; вниз: старое = прошлый, новое = X
+		cpl
+		and	(hl)
+		ld	b,a
+		ld	a,(mv_x)
+		and	c
+		or	b
+		ld	(hl),a
+mc_n:		ld	a,(mv_x)
+		ld	(mv_prev),a
+		inc	l
+		ld	a,(mv_r)
+		inc	a
+		ld	(mv_r),a
+		ld	b,a
+		ld	a,(mv_h2)
+		cp	b
+		jp	nc,mc0
+		ret
+
 ; ActorEraseAnimSprite: DE = спрайт; только новый кадр (без стирания)
 actor_erase_anim_sprite:
 		call	new_frame_de
