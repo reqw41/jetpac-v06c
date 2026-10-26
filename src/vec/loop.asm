@@ -91,6 +91,16 @@ dispatch_obj:
 		xor	a
 		ld	(ws_skip),a
 		call	ws_load
+		ld	a,(cur)			; стирать все плоскости: ракета и анимации (взрывы)
+		cp	rocket_state & 0xFF
+		ld	a,1
+		jp	z,dsf
+		ld	a,(ws)
+		cp	8
+		ld	a,1
+		jp	z,dsf
+		xor	a
+dsf:		ld	(er_force),a
 		ld	a,(ws)
 		rlca
 		and	0x7E

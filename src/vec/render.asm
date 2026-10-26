@@ -130,21 +130,59 @@ an_entry:	REPT	13, n
 		ENDR
 
 ; кадр bl_*: стирание во всех 4 плоскостях
+; стирает только плоскости цвета, которым объект рисовался в прошлый раз (lastcol), и чёрную — если её
+; рисовал он; er_force = 1 — все плоскости (ракета: полосы разных цветов; взрывы: кадры случайных цветов).
+; Пиксели других объектов другого цвета под кадром не прорезаются (на ZX прорезались).
 blit_erase:
 		ld	a,(bl_h2)
 		or	a
 		ret	z
 		ld	hl,an_entry
 		call	bl_setup
+		ld	a,(er_force)
+		or	a
+		ld	c,7
+		jp	nz,be_k
+		call	lastcol_ptr
+		ld	c,(hl)
+		ld	b,0
+		ld	hl,ink_planes
+		add	hl,bc
+		ld	a,(hl)
+		and	7
+		ld	c,a
+		ld	a,(cur)			; чёрную — только её владелец
+		ld	b,a
+		ld	a,(k_owner)
+		cp	b
+		jp	nz,be_go
+be_k:		ld	a,(k_used)
+		or	a
+		jp	z,be_go
+		ld	a,c
+		or	8
+		ld	c,a
+be_go:		ld	a,c
+		rrca
+		jp	nc,be1
+		push	af
 		ld	a,0x80
 		call	blit_plane
+		pop	af
+be1:		rrca
+		jp	nc,be2
+		push	af
 		ld	a,0xA0
 		call	blit_plane
+		pop	af
+be2:		rrca
+		jp	nc,be3
+		push	af
 		ld	a,0xC0
 		call	blit_plane
-		ld	a,(k_used)		; чёрная плоскость пуста — нечего стирать
-		or	a
-		ret	z
+		pop	af
+be3:		rrca
+		ret	nc
 		ld	a,0xE0
 		call	blit_plane
 		ld	a,(cur)			; стёрт кадр того, кто рисовал чёрным (он один — предмет):
@@ -155,6 +193,7 @@ blit_erase:
 		xor	a
 		ld	(k_used),a
 		ret
+er_force:	db	1
 k_used:		db	0			; 1 — в чёрной плоскости что-то есть (очищает clear_screen)
 k_owner:	db	0			; младший байт адреса объекта, рисовавшего чёрным
 

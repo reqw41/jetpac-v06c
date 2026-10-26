@@ -114,7 +114,7 @@ for (const file of files) {
   for (let k = 0; k < 8; k++) convBuffer(real, 0x5e00 + k * 0x33);
   mem[SYM80.lock_mode] = 1;
   let bad = 0, run = 0, shown = 0, tsum = 0, tmax = 0, frsum = 0;
-  const pairs = []; let kUsed = 0;
+  const pairs = []; let kUsed = 0, extra = 0;
   for (let t = 0; t < gd.ticks.length && run < maxTicks; t++) {
     const tk = gd.ticks[t];
     for (const [a, v] of tk.pk || []) { real[a] = v; if (a >= 0x4000 && a < 0x5800) putScreen(a, v); else if (a >= 0x5cf0 && a < 0x5e00) mem[a] = v; }
@@ -143,7 +143,12 @@ for (const file of files) {
     const scr = new Set();
     for (const [a] of tk.d) if (a >= 0x4000 && a < 0x5800) scr.add(a);
     for (const v of written) { const z = zxOfVec.get(((v & 0x9fff) | 0x8000) & 0xffff); if (v >= 0x8000 && z !== undefined) scr.add(z); }
-    for (const a of scr) if (union(vecOf(a)) !== real[a]) diffs.push(['экр:' + a.toString(16), real[a], union(vecOf(a))]);
+    for (const a of scr) {
+      const u = union(vecOf(a));
+      if (u === real[a]) continue;
+      if (!(real[a] & ~u)) { extra++; continue; }   // лишние точки: перекрытие разных цветов не прорезано
+      diffs.push(['экр:' + a.toString(16), real[a], u]);
+    }
     const s80 = snd80(), szx = sndZX(tk.snd);
     if (s80 !== szx) diffs.push(['звук', szx, s80]);
     if (mem[SYM80.game_over] && !tk.menu) diffs.push(['конец игры у i8080', '', '']);
@@ -167,6 +172,7 @@ for (const file of files) {
   }
   console.log(`${gd.name}: шагов ${gd.ticks.length}, i8080 ${run}, расхождений ${bad}; тактов на проход сред ${(tsum / Math.max(run, 1)).toFixed(0)} ` +
     `макс ${tmax} (${(tsum / Math.max(run, 1) / 59904).toFixed(2)} кадра Вектора; ZX ${(frsum / Math.max(run, 1)).toFixed(2)} кадра)`);
+  console.log(`  лишних точек (перекрытия не прорезаны): ${extra} байт`);
   console.log(`  чёрная плоскость в работе: ${(100 * kUsed / Math.max(run, 1)).toFixed(1)} % проходов`);
   if (pairs.length) {                       // темп: кадры ZX без звука ~ k * кадры i8080
     let sx = 0, sy = 0, sxx = 0, sxy = 0, ss = 0; for (const [x, y, z] of pairs) { sx += x; sy += y; sxx += x * x; sxy += x * y; ss += z; }
