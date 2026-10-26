@@ -7,6 +7,7 @@ ml_lim:		dw	0		; конец списка объектов прохода
 ml_nested:	db	0		; 1 — вложенный проход (по кадру)
 pass_sp:	dw	0		; SP на входе в pass — выход при конце игры
 game_over:	db	0
+god_mode:	db	0		; 1 — бессмертие (старт F1+F3)
 lock_mode:	db	0		; 1 — сверка с моделью (без задержек)
 flash_lbl:	db	0		; мигающая надпись: 0 — нет, 0x18 — 1UP, 0xD8 — 2UP
 r_idx:		db	0
@@ -84,6 +85,7 @@ call_hl:	jp	(hl)
 
 ; диспетчер: объект cur -> ws, подпрограмма по типу, ws -> объект
 dispatch_obj:
+		call	snd_poll		; шаги звука — точнее кадра
 		ld	hl,(cur)		; пустой слот — FrameRateLimiter без копирования
 		ld	a,(hl)
 		or	a

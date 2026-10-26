@@ -144,6 +144,9 @@ alien_coll_anim_sfx:
 		call	anim_reset
 		ld	a,1
 		call	sfx_set_explode
+		ld	a,(god_mode)		; бессмертие: пришелец взрывается, Джетмен живёт
+		or	a
+		ret	nz
 		jp	explosion_after_kill
 alien_kill1:
 		call	anim_reset
