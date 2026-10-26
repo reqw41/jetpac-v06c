@@ -175,6 +175,7 @@ write_chars:
 ; --- игра ---------------------------------------------------------------------------------------------
 game_start:					; ZX: «5» уходит в NewGame, не записав D
 		call	new_game
+		call	tune_play		; мелодия BBC-версии на старте (игра её ждёт, как на BBC)
 game_loop:
 		call	pass
 		ld	a,(game_over)
@@ -277,6 +278,7 @@ isp1:		call	vec_scan
 		ld	(paused),a
 isp2:		call	zx_build
 		call	snd_tick
+		call	mus_tick
 		pop	hl
 		pop	de
 		pop	bc
@@ -608,4 +610,183 @@ snd_out:	ld	a,0xB6			; канал 2, младший/старший, режим 3
 		out	(0x09),a
 		ld	a,h
 		out	(0x09),a
+		ret
+
+; --- мелодия старта игры (BBC Micro, Дэвид Рис Джонс, 1983): 38 нот по 150 мс, каналы 1->2->3 по кругу,
+; огибающая 4 (звон с вибрато 1/4 полутона). Здесь: три канала ВИ53 по кругу, нота звенит 11 кадров
+; (~1,5 ноты — соседние накладываются), вибрато — каждые 4 кадра делитель меньше на 1/64.
+; Строй выровнен по нотам (в оригинале всё ниже на ~1/4 полутона). Разбор — docs/BBC_TUNE.md.
+mus_notes:	dw	6074, 6074, 3037, 6074, 6074, 3037, 6074, 4054, 4295, 4551
+		dw	6074, 6074, 3037, 6074, 6074, 3037, 6074, 4054, 4295, 4551
+		dw	4821, 4821, 2411, 4821, 4821, 2411, 4821, 4551, 4295, 4054
+		dw	6074, 6074, 3037, 6074, 6074, 3037, 6074, 3037
+MUS_N		equ	38
+mus_on:		db	0
+mus_idx:	db	0			; следующая нота
+mus_wait:	db	0			; кадров до неё
+mus_rot:	db	0			; канал следующей ноты 0..2
+mus_ph:		db	0			; фаза вибрато
+mus_left:	ds	3			; кадров звучать каналу
+mus_div:	ds	6			; делители каналов
+; каналы ВИ53: управляющее слово и порт данных
+mus_ctl:	db	0x36, 0x76, 0xB6
+mus_port:	db	0x0B, 0x0A, 0x09
+
+tune_play:
+		call	snd_stop
+		xor	a
+		ld	(mus_idx),a
+		ld	(mus_rot),a
+		ld	(mus_left),a
+		ld	(mus_left+1),a
+		ld	(mus_left+2),a
+		inc	a
+		ld	(mus_wait),a
+		ld	(mus_on),a
+tp0:		ld	a,(mus_on)		; ждать конца (клавиатура, как на BBC, не прерывает)
+		or	a
+		jp	nz,tp0
+		ret
+
+; из прерывания: каждые 7/8 кадров новая нота, каналы гаснут по счётчикам, вибрато
+mus_tick:
+		ld	a,(mus_on)
+		or	a
+		ret	z
+		ld	hl,mus_ph
+		inc	(hl)
+		; новая нота?
+		ld	hl,mus_wait
+		dec	(hl)
+		jp	nz,mt_ch
+		ld	a,(mus_idx)
+		cp	MUS_N
+		jp	nc,mt_ch		; ноты кончились — дозвучать
+		ld	b,a
+		inc	a
+		ld	(mus_idx),a
+		and	1			; 150 мс = 7,5 кадра: попеременно 8 и 7
+		add	a,7
+		ld	(mus_wait),a
+		ld	a,b
+		add	a,a
+		ld	e,a
+		ld	d,0
+		ld	hl,mus_notes
+		add	hl,de
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)			; DE = делитель
+		ld	a,(mus_rot)
+		ld	c,a
+		inc	a
+		cp	3
+		jp	c,mt_r
+		xor	a
+mt_r:		ld	(mus_rot),a
+		ld	b,0
+		ld	hl,mus_left
+		add	hl,bc
+		ld	(hl),11
+		ld	hl,mus_div
+		add	hl,bc
+		add	hl,bc
+		ld	(hl),e
+		inc	hl
+		ld	(hl),d
+mt_ch:		; каналы: звучащие — делитель (с вибрато), погасшие — тишина
+		ld	c,0
+mt_c0:		ld	b,0
+		ld	hl,mus_left
+		add	hl,bc
+		ld	a,(hl)
+		or	a
+		jp	z,mt_off
+		dec	(hl)
+		jp	z,mt_off
+		ld	hl,mus_div
+		add	hl,bc
+		add	hl,bc
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		ld	a,(mus_ph)		; вибрато: кадры 4..7 из 12 — выше на 1/4 полутона
+		and	0x0C
+		cp	4
+		jp	nz,mt_out
+		ld	h,d
+		ld	l,e
+		ld	a,6			; DE -= DE >> 6
+mt_sh:		ld	b,a
+		ld	a,h
+		and	a
+		rra
+		ld	h,a
+		ld	a,l
+		rra
+		ld	l,a
+		ld	a,b
+		dec	a
+		jp	nz,mt_sh
+		ld	a,e
+		sub	l
+		ld	e,a
+		ld	a,d
+		sbc	a,h
+		ld	d,a
+mt_out:		call	mus_set
+		jp	mt_nx
+mt_off:		ld	de,0
+		call	mus_set
+mt_nx:		inc	c
+		ld	a,c
+		cp	3
+		jp	c,mt_c0
+		; всё отзвучало?
+		ld	a,(mus_idx)
+		cp	MUS_N
+		ret	c
+		ld	a,(mus_left)
+		ld	b,a
+		ld	a,(mus_left+1)
+		or	b
+		ld	b,a
+		ld	a,(mus_left+2)
+		or	b
+		ret	nz
+		xor	a
+		ld	(mus_on),a
+		ret
+; канал C: DE = делитель (0 — тишина: режим 0 с нулём на выходе)
+mus_set:
+		ld	b,0
+		ld	hl,mus_ctl
+		add	hl,bc
+		ld	a,d
+		or	e
+		ld	a,(hl)
+		jp	nz,ms_on
+		and	0xF0			; режим 0 — выход в 0
+ms_on:		out	(0x08),a
+		ld	hl,mus_port
+		add	hl,bc
+		ld	a,(hl)
+		cp	0x0B
+		jp	z,ms_p0
+		cp	0x0A
+		jp	z,ms_p1
+		ld	a,e
+		out	(0x09),a
+		ld	a,d
+		out	(0x09),a
+		ret
+ms_p1:		ld	a,e
+		out	(0x0A),a
+		ld	a,d
+		out	(0x0A),a
+		ret
+ms_p0:		ld	a,e
+		out	(0x0B),a
+		ld	a,d
+		out	(0x0B),a
 		ret

@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 orig/
 tools/zx0/zx0
+ref/bbc/*.ssd
+ref/bbc/*.bin
+ref/bbc/*.wav
