@@ -108,7 +108,13 @@ ml1:		call	dispatch_obj
 		sbc	a,h
 		ex	de,hl
 		jp	c,ml0
-na_pause:	ld	a,0xFE			; SHIFT — пауза
+na_pause:	ld	a,(lock_mode)		; ВК на Векторе — пауза (на сверке её нет)
+		or	a
+		jp	nz,na_p1
+		ld	a,(paused)
+		or	a
+		jp	nz,na_pause
+na_p1:		ld	a,0xFE			; SHIFT ZX — пауза, пока нажата
 		call	in_row
 		and	1
 		jp	z,na_pause

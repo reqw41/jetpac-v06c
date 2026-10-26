@@ -31,6 +31,8 @@ sg0:		ld	(hl),0
 ; ResetGame
 reset_game:
 		ld	sp,STACK_TOP
+		xor	a
+		ld	(paused),a
 		ei
 		call	snd_stop
 		call	reset_screen
@@ -247,7 +249,18 @@ isp0:		ld	a,e
 		ld	hl,FRAMES+2
 		inc	(hl)
 isp1:		call	vec_scan
-		call	zx_build
+		ld	a,(vec_kbmat+0)		; ВК: по нажатию пауза вкл/выкл
+		and	0x04
+		ld	hl,vk_prev
+		ld	b,(hl)
+		ld	(hl),a
+		jp	z,isp2
+		cp	b
+		jp	z,isp2
+		ld	a,(paused)
+		xor	1
+		ld	(paused),a
+isp2:		call	zx_build
 		call	snd_tick
 		pop	hl
 		pop	de
@@ -288,6 +301,8 @@ vs0:		ld	a,b
 		ret
 ; ряды ZX: zx_kb = клавиши Вектора по vec_zxmap + стрелки/пробел/джойстик (по режиму игры)
 vj_fire:	db	0
+vk_prev:	db	0
+paused:		db	0			; 1 — пауза (ВК); игра стоит в na_pause
 zx_build:
 		ld	hl,zx_kb
 		ld	de,vec_zxmap
@@ -413,7 +428,7 @@ vec_zxmap:	db	low vec_kbmat+7,0x00, low vec_kbmat+7,0x04, low vec_kbmat+7,0x01, 
 		db	low vec_kbmat+2,0x02, low vec_kbmat+2,0x04, low vec_kbmat+2,0x08, low vec_kbmat+2,0x10, low vec_kbmat+2,0x20	; 1 2 3 4 5
 		db	low vec_kbmat+2,0x01, low vec_kbmat+3,0x02, low vec_kbmat+3,0x01, low vec_kbmat+2,0x80, low vec_kbmat+2,0x40	; 0 9 8 7 6
 		db	low vec_kbmat+6,0x01, low vec_kbmat+5,0x80, low vec_kbmat+5,0x02, low vec_kbmat+6,0x20, low vec_kbmat+7,0x02	; P O I U Y
-		db	low vec_kbmat+0,0x04, low vec_kbmat+5,0x10, low vec_kbmat+5,0x08, low vec_kbmat+5,0x04, low vec_kbmat+5,0x01	; ENTER L K J H
+		db	low vec_kbmat+0,0x00, low vec_kbmat+5,0x10, low vec_kbmat+5,0x08, low vec_kbmat+5,0x04, low vec_kbmat+5,0x01	; ENTER(нет: ВК — пауза) L K J H
 		db	low vec_kbmat+7,0x80, low vec_kbmat+7,0x10, low vec_kbmat+5,0x20, low vec_kbmat+5,0x40, low vec_kbmat+4,0x04	; SPACE SYM(\) M N B
 
 ; --- звук: ВИ53 канал 2 (порт 09h, управление 08h), меандр; эффекты ZX пересчитаны в делитель и кадры --

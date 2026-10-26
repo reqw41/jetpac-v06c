@@ -36,5 +36,4 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 const out = OUT || 'build/vecshot.png';
 fs.writeFileSync(out + '.ppm', Buffer.concat([Buffer.from(`P6 ${W} ${H} 255\n`), img]));
 execSync(`sips -s format png "${out}.ppm" --out "${out}" >/dev/null && rm "${out}.ppm"`);
-const sym = {}; for (const l of fs.readFileSync(path.join(path.dirname(ROM), 'jetpac.sym'), 'latin1').split('\n')) { const q = l.match(/^(\w+):\s+EQU\s+0x([0-9A-F]+)/i); if (q) sym[q[1]] = parseInt(q[2], 16); }
 console.log(`кадров ${N}, PC ${m.cpu.pc.toString(16)}, FRAMES ${m.rd(0x5c78) | m.rd(0x5c79) << 8}, уровень ${m.rd(0x5df0)}, жизни ${m.rd(0x5df1)}, x,y ${m.rd(0x5d01)},${m.rd(0x5d02)} -> ${out}`);
