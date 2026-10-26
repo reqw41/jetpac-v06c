@@ -19,9 +19,15 @@ boot:
 		xor	a
 		ld	(lock_mode),a
 		ld	(frame_ticked),a
+		ei
+		call	fs_calib		; тиков секундомера на кадр — на этой машине/эмуляторе
+		call	fs_start
+		ld	(frame_ticked),a
 		; заставка: палитра заставки, картинка (zx0) прямо в экран, ждать клавишу
 		ld	hl,pal_splash
 		ld	(pal_ptr),hl
+		ld	a,3
+		ld	(pal_load),a
 		ei
 		call	clear_screen
 		ld	hl,splash_zx0
@@ -34,6 +40,8 @@ spl_w1:		call	any_key			; и отпускания (иначе огонь сра�
 		call	clear_screen
 		ld	hl,pal_vec
 		ld	(pal_ptr),hl
+		ld	a,3
+		ld	(pal_load),a
 ; StartGame: обнулить рекорд и очки
 start_game:
 		ld	hl,hi_score
@@ -190,7 +198,8 @@ gs1:		call	any_key			; дождаться отпускания (F1+F3, огон�
 		jp	nz,gs1
 		call	new_game
 		call	tune_play		; мелодия BBC-версии на старте (игра её ждёт, как на BBC)
-		call	timer_init		; канал 0 ВИ53 снова секундомер звука
+		call	timer_init		; канал 0 ВИ53 снова секундомер (звук, кадры)
+		call	fs_start
 game_loop:
 		call	pass
 		ld	a,(game_over)
@@ -252,7 +261,15 @@ isr:
 		push	bc
 		push	de
 		push	hl
-		ld	hl,(pal_ptr)		; палитра: все 16 записей каждый кадр (луч в обратном ходе)
+		ld	hl,(isr_cnt)		; отладка: число прерываний
+		inc	hl
+		ld	(isr_cnt),hl
+		ld	a,(pal_load)		; палитра: только после смены (3 кадра — на случай промаха мимо обратного хода)
+		or	a
+		jp	z,isp_np
+		dec	a
+		ld	(pal_load),a
+		ld	hl,(pal_ptr)
 		ld	de,15
 		add	hl,de
 		ld	e,0x0F
@@ -268,12 +285,15 @@ isp0:		ld	a,e
 		jp	p,isp0
 		xor	a
 		out	(0x02),a
-		ld	a,(mus_on)		; секундомер (канал 0) занят мелодией — не трогать
+isp_np:		ld	a,(fs_on)		; отметка секундомера на кадровом прерывании (для догона потерянных)
+		or	a
+		jp	z,isp_fr
+		ld	a,(mus_on)
 		or	a
 		jp	nz,isp_fr
 		call	timer_now
-		ld	(fs_t),hl		; на этом кадре — для догона потерянных прерываний
-isp_fr:		ld	hl,(FRAMES)		; кадры считаются всегда (вложенный проход смену просто не замечает)
+		ld	(fs_t),hl
+isp_fr:		ld	hl,(FRAMES)		; кадр — по прерыванию (синхронно с лучом)
 		inc	hl
 		ld	(FRAMES),hl
 		ld	a,h
@@ -306,50 +326,125 @@ isp2:		call	zx_build
 ; палитра: индекс = p80<<3 | pA0<<2 | pC0<<1 | pE0 (чёрная плоскость не видна); сочетания плоскостей —
 ; ink_planes (render.asm); цвета — «холодная» (вариант 4, 26.10) + Джетмен и салатный из заставки; %BBGGGRRR
 pal_ptr:	dw	pal_vec
+pal_load:	db	3			; кадров грузить палитру (ставить при смене pal_ptr)
 ; догон потерянного кадра: прерывание при DI на Векторе теряется (блиттер держит DI на плоскость).
 ; Если с последнего прерывания по секундомеру прошло больше 1,5 кадра (44928 тиков 1,5 МГц) — кадр
 ; потерян: FRAMES += 1, отметка -= кадр (29952). Зовёт главный цикл перед проверкой кадра.
 fs_t:		dw	0
+fs_cnt:		dw	0
+isr_cnt:	dw	0
+fs_tpf:		dw	29952			; тиков на кадр (калибруется)
+fs_thr:		dw	0xFFFF			; порог догона = 1,5 кадра; 0xFFFF — догон выключен
+; калибровка: два кадра подряд при включённых прерываниях, без вывода
+fs_calib:
+		call	fsc_wait
+		call	timer_now
+		push	hl
+		call	fsc_wait
+		call	timer_now
+		ex	de,hl
+		pop	hl
+		ld	a,l			; тиков = первый - второй
+		sub	e
+		ld	l,a
+		ld	a,h
+		sbc	a,d
+		ld	h,a
+		ld	(fs_tpf),hl
+		ld	d,h
+		ld	e,l
+		ld	a,h			; порог = 1,5 * tpf, если помещается в период секундомера
+		and	a
+		rra
+		ld	h,a
+		ld	a,l
+		rra
+		ld	l,a
+		add	hl,de
+		jp	c,fsc_off
+		ld	a,h
+		cp	0xF8
+		jp	nc,fsc_off
+		ld	(fs_thr),hl
+		ret
+fsc_off:	ld	hl,0xFFFF
+		ld	(fs_thr),hl
+		ret
+fsc_wait:	ld	a,(FRAMES)
+		ld	b,a
+fsw0:		ld	a,(FRAMES)
+		cp	b
+		jp	z,fsw0
+		ret
 frames_sync:
 		ld	a,(lock_mode)
 		or	a
 		ret	nz
+		ld	a,(fs_on)
+		or	a
+		ret	z
 		ld	a,(mus_on)
 		or	a
 		ret	nz
+		di
+		call	fsync_core
+		ei
+		ret
+; под DI: прерывание потерялось (с отметки прошло > 1,5 кадра) — FRAMES += 1, отметка -= кадр
+fsync_core:
 		push	bc
 		push	de
 		push	hl
-		di
 		call	timer_now
-		ex	de,hl
-		ld	hl,(fs_t)
+		ex	de,hl			; DE = сейчас
+fsc0:		ld	hl,(fs_t)
 		ld	a,l			; прошло = отметка - сейчас (счётчик идёт вниз)
 		sub	e
 		ld	c,a
 		ld	a,h
 		sbc	a,d
 		ld	b,a
-		ld	a,c
-		sub	0xC0			; >= 44928 (0xAF80)?
-		ld	a,b
-		sbc	a,0xAF
-		jp	c,fsy_ok
-		ld	de,29952
-		ld	a,l
-		sub	e
+		ld	a,(fs_thr)
 		ld	l,a
+		ld	a,c
+		sub	l
+		ld	a,(fs_thr+1)
+		ld	l,a
+		ld	a,b
+		sbc	a,l
+		jp	c,fsc_done
+		ld	hl,(fs_t)		; отметка -= кадр
+		ld	a,(fs_tpf)
+		ld	c,a
+		ld	a,l
+		sub	c
+		ld	l,a
+		ld	a,(fs_tpf+1)
+		ld	c,a
 		ld	a,h
-		sbc	a,d
+		sbc	a,c
 		ld	h,a
 		ld	(fs_t),hl
 		ld	hl,(FRAMES)
 		inc	hl
 		ld	(FRAMES),hl
-fsy_ok:		ei
-		pop	hl
+		ld	hl,(fs_cnt)
+		inc	hl
+		ld	(fs_cnt),hl
+		jp	fsc0
+fsc_done:	pop	hl
 		pop	de
 		pop	bc
+		ret
+fs_on:		db	0
+; отметка = сейчас, счёт по секундомеру включить
+fs_start:
+		di
+		call	timer_now
+		ld	(fs_t),hl
+		ld	a,1
+		ld	(fs_on),a
+		ei
 		ret
 ; NZ — нажата любая клавиша Вектора или огонь джойстика
 any_key:
@@ -375,16 +470,23 @@ vec_scan:
 		out	(0x00),a
 		ld	hl,vec_kbmat
 		ld	b,0xFE
+		ld	c,0			; накопитель отличий от прошлого кадра
 vs0:		ld	a,b
 		out	(0x03),a
 		in	a,(0x02)
 		cpl
-		ld	(hl),a
+		ld	d,a
+		xor	(hl)
+		or	c
+		ld	c,a
+		ld	(hl),d
 		inc	hl
 		ld	a,b
 		rlca
 		ld	b,a
 		jp	c,vs0
+		ld	a,c
+		ld	(kb_chg),a
 		ld	a,0x88
 		out	(0x00),a
 		ld	a,0xFF
@@ -392,12 +494,27 @@ vs0:		ld	a,b
 		xor	a
 		out	(0x02),a
 		ret
+kb_chg:		db	0xFF
 ; ряды ZX: zx_kb = клавиши Вектора по vec_zxmap + стрелки/пробел/джойстик (по режиму игры)
 vj_fire:	db	0
 vk_prev:	db	0
 paused:		db	0			; 1 — пауза (ВК); игра стоит в na_pause
 zx_build:
-		ld	hl,zx_kb
+		in	a,(0x06)		; джойстик и режим ввода — тоже повод пересобрать
+		ld	b,a
+		ld	a,(game_options)
+		and	2
+		or	b
+		ld	b,a
+		ld	a,(zb_prev)
+		cp	b
+		ld	a,b
+		ld	(zb_prev),a
+		jp	nz,zb_go
+		ld	a,(kb_chg)
+		or	a
+		ret	z
+zb_go:		ld	hl,zx_kb
 		ld	de,vec_zxmap
 		ld	c,8
 zb0:		ld	b,0x1F			; ряд ZX
@@ -511,6 +628,7 @@ zb11:		inc	hl
 		jp	zb10
 zb12:		ret
 zb_bit:		db	0
+zb_prev:	db	0
 ; клавиши ZX для R, L, U, D, огонь: (ряд, маска)
 dir_kbd:	db	0,0xFB, 0,0xFD, 2,0xFE, 7,0xFF, 1,0xFE	; X Z Q - A
 dir_joy:	db	4,0xF7, 4,0xEF, 4,0xFD, 4,0xFB, 4,0xFE		; 7 6 9 8 0

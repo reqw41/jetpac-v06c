@@ -1004,7 +1004,7 @@ frame_rate_limiter:
 		ld	a,(frame_ticked)
 		or	a
 		ret	nz
-		ld	b,120			; подобрано: средний проход как у ZX (lock80, «темп»)
+		ld	b,30			; подобрано по ровности хода пришельцев в живой игре (как ZX: в основном раз в 2 кадра)
 frl0:		dec	b
 		jp	nz,frl0
 		ret

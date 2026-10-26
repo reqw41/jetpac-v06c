@@ -140,7 +140,9 @@ pass:
 ; MainLoop: HL = первый объект; ml_lim, ml_nested — у вызывающего
 main_loop:
 ml0:		ld	(cur),hl
-		call	frames_sync		; досчитать кадр, потерянный при DI
+		ld	a,(ml_nested)		; во вложенном проходе смена кадра не нужна — не считать
+		or	a
+		call	z,frames_sync		; кадры по секундомеру
 		ld	a,(last_frame)		; во вложенном проходе смена кадра не в счёт (на ZX там DI)
 		ld	b,a
 		ld	a,(FRAMES)
