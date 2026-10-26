@@ -28,14 +28,53 @@ get_r:
 		pop	hl
 		ret
 
-ws_load:	ld	hl,(cur)
-		ld	de,ws
-		jp	copy8
-ws_store:	ld	hl,ws
-		ex	de,hl
+; копия объекта cur <-> ws через SP (прерывания запрещены на ~100 тактов)
+ws_load:	ld	hl,0
+		add	hl,sp
+		ld	(ws_sp),hl
 		ld	hl,(cur)
+		di
+		ld	sp,hl
+		pop	bc
+		pop	de
+		pop	hl
+		ld	(ws+4),hl
+		pop	hl
+		ld	(ws+6),hl
+		ld	hl,(ws_sp)
+		ld	sp,hl
+		ei
+		ld	h,b
+		ld	l,c
+		ld	(ws),hl
 		ex	de,hl
-		jp	copy8
+		ld	(ws+2),hl
+		ret
+ws_store:	ld	hl,0
+		add	hl,sp
+		ld	(ws_sp),hl
+		ld	hl,(cur)
+		ld	de,8
+		add	hl,de
+		ex	de,hl
+		ld	hl,(ws+6)
+		ld	b,h
+		ld	c,l
+		ex	de,hl
+		di
+		ld	sp,hl
+		push	bc
+		ld	hl,(ws+4)
+		push	hl
+		ld	hl,(ws+2)
+		push	hl
+		ld	hl,(ws)
+		push	hl
+		ld	hl,(ws_sp)
+		ld	sp,hl
+		ei
+		ret
+ws_sp:		dw	0
 ws_flush:	call	ws_store
 		ld	a,1
 		ld	(ws_skip),a

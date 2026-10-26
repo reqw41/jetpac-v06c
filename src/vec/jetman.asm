@@ -391,6 +391,8 @@ put_ff:
 		jp	nz,pf_c
 		ld	a,1
 		ld	(k_used),a
+		ld	a,0xFF
+		ld	(k_owner),a
 		xor	a
 pf_c:
 		ld	c,a

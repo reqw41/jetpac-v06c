@@ -146,8 +146,17 @@ blit_erase:
 		or	a
 		ret	z
 		ld	a,0xE0
-		jp	blit_plane
+		call	blit_plane
+		ld	a,(cur)			; стёрт кадр того, кто рисовал чёрным (он один — предмет):
+		ld	b,a			; больше чёрных точек нет
+		ld	a,(k_owner)
+		cp	b
+		ret	nz
+		xor	a
+		ld	(k_used),a
+		ret
 k_used:		db	0			; 1 — в чёрной плоскости что-то есть (очищает clear_screen)
+k_owner:	db	0			; младший байт адреса объекта, рисовавшего чёрным
 
 ; кадр bl_*: OR в плоскостях цвета A (биты 0..2 — INK ZX)
 blit_draw:
@@ -186,6 +195,8 @@ bd_p3:		rrca
 		ret	nc
 		ld	a,1
 		ld	(k_used),a
+		ld	a,(cur)
+		ld	(k_owner),a
 		ld	a,0xE0
 		jp	blit_plane
 
@@ -428,6 +439,8 @@ draw_cell:
 		ld	b,a
 		ld	a,1
 		ld	(k_used),a
+		ld	a,0xFF
+		ld	(k_owner),a
 		ld	a,b
 dcl_c:		push	hl
 		ld	c,a
