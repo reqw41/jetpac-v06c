@@ -24,7 +24,12 @@ for (let f = 0; f < N; f++) {
   for (const [k, d] of plan[f] || []) { const e = VKEYS[k]; if (d) m.keyboard.matrix[e[0]] |= e[1]; else m.keyboard.matrix[e[0]] &= ~e[1]; }
   m.frame();
 }
-const PAL = [0x00, 0x00, 0x38, 0x38, 0x07, 0x07, 0xF8, 0xF8, 0xFF, 0xFF, 0x3F, 0x3F, 0xC7, 0xC7, 0xC0, 0xC0];
+// палитра — из образа (pal_vec по build/vec/jetpac.sym), иначе по умолчанию
+let PAL = [0x00, 0x00, 0x38, 0x38, 0x07, 0x07, 0xF8, 0xF8, 0xFF, 0xFF, 0x3F, 0x3F, 0xC7, 0xC7, 0xC0, 0xC0];
+try {
+  const sm = fs.readFileSync(path.join(__dirname, '../build/vec/jetpac.sym'), 'latin1').match(/^pal_ptr:\s+EQU\s+0x([0-9A-F]+)/im);
+  if (sm) { const pp = parseInt(sm[1], 16), pa = m.rd(pp) | m.rd(pp + 1) << 8; PAL = Array.from({ length: 16 }, (_, i) => m.rd(pa + i)); }
+} catch (e) { /* без палитры из образа */ }
 const rgb = (c) => [(c & 7) * 255 / 7 | 0, ((c >> 3) & 7) * 255 / 7 | 0, ((c >> 6) & 3) * 255 / 3 | 0];
 const W = 256, H = 256, img = Buffer.alloc(W * H * 3);
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {

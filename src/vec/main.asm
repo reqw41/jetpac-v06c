@@ -18,8 +18,21 @@ boot:
 		xor	a
 		ld	(lock_mode),a
 		ld	(frame_ticked),a
+		; заставка: палитра заставки, картинка (zx0) прямо в экран, ждать клавишу
+		ld	hl,pal_splash
+		ld	(pal_ptr),hl
 		ei
 		call	clear_screen
+		ld	hl,splash_zx0
+		ld	bc,0x8000
+		call	dzx0
+spl_w0:		call	any_key			; дождаться нажатия
+		jp	z,spl_w0
+spl_w1:		call	any_key			; и отпускания (иначе огонь сразу стартует игру из меню)
+		jp	nz,spl_w1
+		call	clear_screen
+		ld	hl,pal_vec
+		ld	(pal_ptr),hl
 ; StartGame: обнулить рекорд и очки
 start_game:
 		ld	hl,hi_score
@@ -223,7 +236,9 @@ isr:
 		push	bc
 		push	de
 		push	hl
-		ld	hl,pal_vec+15		; палитра: все 16 записей каждый кадр (луч в обратном ходе)
+		ld	hl,(pal_ptr)		; палитра: все 16 записей каждый кадр (луч в обратном ходе)
+		ld	de,15
+		add	hl,de
 		ld	e,0x0F
 isp0:		ld	a,e
 		out	(0x02),a
@@ -271,8 +286,22 @@ isp2:		call	zx_build
 
 ; палитра: индекс = p80<<3 | pA0<<2 | pC0<<1 | pE0 (чёрная плоскость не видна);
 ; сочетания плоскостей -> цвета ZX как в ink_planes (render.asm); цвет Вектора %BBGGGRRR
-pal_vec:	db	0x00,0x00, 0x38,0x38, 0x07,0x07, 0xF8,0xF8	; -, зелёный, красный, голубой
-		db	0xFF,0xFF, 0x3F,0x3F, 0xC7,0xC7, 0xC0,0xC0	; белый, жёлтый, пурпурный, синий
+pal_ptr:	dw	pal_vec
+; NZ — нажата любая клавиша Вектора или огонь джойстика
+any_key:
+		ld	hl,vec_kbmat
+		ld	b,8
+		xor	a
+ak0:		or	(hl)
+		inc	hl
+		dec	b
+		jp	nz,ak0
+		ld	b,a
+		ld	a,(vj_fire)
+		or	b
+		ret
+pal_vec:	db	0x00,0x00, 0x71,0x71, 0x4E,0x4E, 0xF2,0xF2	; -, зелёный, красный, голубой (палитра «холодная», выбор владельца 26.10)
+		db	0xFE,0xFE, 0x76,0x76, 0xD5,0xD5, 0xD9,0xD9	; белый, жёлтый, пурпурный, синий
 
 ; --- клавиатура -----------------------------------------------------------------------------------------
 		ALIGN	8

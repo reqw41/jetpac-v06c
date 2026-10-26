@@ -22,6 +22,9 @@ zx_kb:		db	0x1F,0x1F,0x1F,0x1F,0x1F,0x1F,0x1F,0x1F	; ряды ZX (бит = 0 —
 		INCLUDE	"jetman.asm"
 		INCLUDE	"loop.asm"
 		INCLUDE	"main.asm"
+		INCLUDE	"dzx0.asm"
+		INCLUDE	"gen/splash_pal.asm"
+splash_zx0:	INCBIN	"gen/splash.zx0"
 code_end:
 		ASSERT	code_end < STACK_TOP - 0x100
 
