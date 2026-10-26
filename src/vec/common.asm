@@ -446,7 +446,7 @@ dl_one:		or	a
 		add	a,0x30
 		call	draw_char
 		ld	de,tile_life_icon
-		ld	a,0x47
+		ld	a,0x41			; голубой — цвет Джетмена
 		jp	draw_cell
 dl_sp:		ld	a,0x20
 		call	draw_char

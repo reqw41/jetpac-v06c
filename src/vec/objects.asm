@@ -922,6 +922,7 @@ urd1:		pop	hl
 urc_nb:		db	0
 ; полоса модуля: A = цвет, C = первая строка (0 / 8); 8 строк по каждому столбцу кадра nf_*
 urc_half:
+		and	7
 		ld	(urh_col),a
 		ld	a,(nf_h2)		; строк в полосе: min(8, h2 - C)
 		sub	c

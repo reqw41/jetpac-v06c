@@ -70,7 +70,7 @@ def colour(x, y):
     if c == 6: return 'gold'
     # скафандр: белый с холодной тенью справа-снизу
     if c == 7:
-        return 'white' if (x - 128) + (y - 56) * 0.8 < 110 else 'frost'
+        return 'frost'                                 # скафандр целиком — цвет Джетмена в игре
     return {1: 'blue', 2: 'red', 4: 'green', 5: 'cyan'}.get(c, 'white')
 
 img = [[NAMES.index(colour(x, y)) for x in range(256)] for y in range(192)]
