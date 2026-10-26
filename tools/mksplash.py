@@ -73,16 +73,33 @@ def colour(x, y):
         return 'frost'                                 # скафандр целиком — цвет Джетмена в игре
     return {1: 'blue', 2: 'red', 4: 'green', 5: 'cyan'}.get(c, 'white')
 
-img = [[NAMES.index(colour(x, y)) for x in range(256)] for y in range(192)]
+# растяжение 192 -> 256 строк: SPLASH_STRETCH = regions (по умолчанию: логотип и надписи как есть, растут
+# плашки и сцена), uniform (каждая третья строка дважды), none (192 строки по центру, как раньше)
+MODE = os.environ.get('SPLASH_STRETCH', 'regions')
+def rows_map():
+    if MODE == 'none':
+        return [None] * 32 + list(range(192)) + [None] * 32
+    if MODE == 'uniform':
+        return [y * 192 // 256 for y in range(256)]
+    top = [0, 1, 2, 3] * 3                                  # верхняя плашка 4 -> 12
+    logo = list(range(4, 49))                               # коробка логотипа как есть
+    mid = (list(range(49, 56)) * 2)[:12]                    # плашка под логотипом 7 -> 12
+    scene = [56 + y * 120 // 160 for y in range(160)]       # сцена 120 -> 160
+    bot = [176] * 6 + list(range(177, 185)) + list(range(185, 192)) + [191] * 6
+    m = top + logo + mid + scene + bot
+    assert len(m) == 256, len(m)
+    return m
+RMAP = rows_map()
+img = [[NAMES.index(colour(x, sy)) if sy is not None else 0 for x in range(256)] for sy in RMAP]
 
 # индекс палитры -> аппаратный индекс Вектора (биты плоскостей): берём тот же номер
 planes = bytearray(4 * 8192)
-for y in range(192):
+for y in range(256):
     for x in range(256):
         i = img[y][x]
         for p in range(4):                                   # p: 0 -> 0x80 (бит 3), 1 -> 0xA0 (бит 2), ...
             if (i >> (3 - p)) & 1:
-                planes[p * 8192 + (x >> 3) * 256 + (223 - y)] |= 0x80 >> (x & 7)
+                planes[p * 8192 + (x >> 3) * 256 + (255 - y)] |= 0x80 >> (x & 7)
 os.makedirs(os.path.join(ROOT, 'src/vec/gen'), exist_ok=True)
 os.makedirs(os.path.join(ROOT, 'build'), exist_ok=True)
 raw = os.path.join(ROOT, 'build/splash.bin')
@@ -101,5 +118,6 @@ for y in range(256):
         a = (x >> 3) * 256 + (255 - y)
         i = sum(((planes[p * 8192 + a] >> (7 - (x & 7))) & 1) << (3 - p) for p in range(4))
         pv.putpixel((x, y), rgb(pal[i]))
+pv.resize((768, 768), Image.NEAREST).save(os.path.join(ROOT, f'build/splash_preview_{MODE}.png'))
 pv.resize((768, 768), Image.NEAREST).save(os.path.join(ROOT, 'build/splash_preview.png'))
 print(f'splash.zx0: {os.path.getsize(out)} Б (из {len(planes)})')
